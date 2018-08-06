@@ -1,5 +1,6 @@
 #!/bin/bash
 
+SCRIPTVER=3.0.2
 CONFIG_FILE='aegeus.conf'
 CONFIGFOLDER=$(eval echo $HOME/.aegeus)
 CFFULLPATH=$(eval echo $CONFIGFOLDER/$CONFIG_FILE)
@@ -107,8 +108,8 @@ echo -e "${GREEN}* Done${NONE}";
 function memorycheck() {
 
 echo -e "${GREEN}Checking Memory${NC}"
-FREEMEM=$(free -m |grep Mem |awk '{ print $4 }')
-SWAPS=$(free -m |grep Swap |awk '{ print $2 }')
+FREEMEM=$(free -m |sed -n '2,2p' |awk '{ print $4 }')
+SWAPS=$(free -m |tail -n1 |awk '{ print $2 }')
 
 if [[ $FREEMEM -lt 3096 ]]; then 
 	if [[ $SWAPS -eq 0 ]]; then
@@ -168,12 +169,14 @@ echo -e "                                                           "
 echo -e "${YELLOW}No, seriously, if you're only compiling with one core, on a 5 dollar vultr, expect this to take up to 45 minutes"
 
 
-CORES=$(grep ^cpu\\scores /proc/cpuinfo | wc -l)
+#CORES=$(grep ^cpu\\scores /proc/cpuinfo | wc -l)
+CORES=$(($(grep ^proc /proc/cpuinfo |tail -n1 |awk -F: '{print $2}') + 1))
+
 CF=$(eval expr $CORES - 1)
 if [[ $CF -eq 0 ]]; then
 CF='1'
 fi
-FM=$(($(($FREEMEM + $SWAPS))/1024))
+FM=$(($(($(eval echo $FREEMEM) + $(eval echo $SWAPS)))/1024))
 if  [[ $CF -gt 4 ]]; then
         #CL=$(($FM/$CF+$(($CF/2))+5))
         CL=$(($CF/2+3))
@@ -240,7 +243,10 @@ WantedBy=multi-user.target
 EOF
 
   systemctl daemon-reload
-  sleep 3
+}
+
+function startsystemd() {
+
   systemctl start $COIN_NAME.service
   systemctl enable $COIN_NAME.service >/dev/null 2>&1
 
@@ -253,9 +259,6 @@ EOF
   fi
 }
 
-
-
-
 function create_config() {
   echo -e "${GREEN}Generating Config at $CFFULLPATH ${NC}"
 
@@ -264,18 +267,16 @@ echo -e "Making Config Folder"
 mkdir $(eval echo $CONFIGFOLDER)
 fi
 
-$COIND_COMMAND stop 
-killall -9 aegeusd  > /dev/null 2>&1
-killall 15 aegeusd > /dev/null 2>&1
   RPCUSER=$(openssl rand -hex 11)
   RPCPASSWORD=$(openssl rand -hex 20)
   RPCPORT=$(netstat --listening -n |grep $RPC_PORT)
 if [[ ! -z RPCPORT ]]; then
+echo -e "Port $RPC_PORT is clear!"
+else
 echo -e "Something is listening on the RPC Port: $RPC_PORT."
-RPC_PORT=$(eval expr $RPC_PORT + 10) 
+RPC_PORT=$((($RPC_PORT) + 10))
 echo -e "moving RPC port to $RPC_PORT"
 fi
-
 
   cat << EOF > $(eval echo $CONFIGFOLDER/$CONFIG_FILE)
 
@@ -324,7 +325,6 @@ maxconnections=128
 masternode=1
 externalip=$EXTERNALIP
 masternodeprivkey=$COINKEY
-
 EOF
 
 if [ -d $(eval echo $COIN_BACKUP) ]; then 
@@ -346,16 +346,6 @@ maxconnections=25
 masternode=0
 staking=1
 externalip=$EXTERNALIP
-addnode=144.202.99.24
-addnode=140.82.50.184
-addnode=144.202.97.44
-addnode=149.28.200.244
-addnode=144.202.96.12
-addnode=104.207.149.137
-addnode=149.28.205.234
-addnode=144.202.97.176
-addnode=149.28.193.111
-addnode=149.28.193.113
 
 #ADDNODES
 
@@ -461,7 +451,7 @@ fi
 
 function important_information() {
  echo
- echo -e "${RED} ${RED}Dragon${PURPLE}Lady Flexi-compile edit 2.5.0${NC}"
+ echo -e "${RED} ${RED}Dragon${PURPLE}Lady Flexi-compile edit $SCRIPTVER${NC}"
  echo -e "${BLUE}================================================================================================================================${NC}"
  echo -e "${PURPLE}Windows Wallet Guide. https://github.com/Aegeus/master/README.md${NC}"
  echo -e "${BLUE}================================================================================================================================${NC}"
@@ -497,7 +487,7 @@ logo
 
 function important_information_wallet() {
  echo
- echo -e "${RED} ${RED}Dragon${PURPLE}Lady Flexi-compile edit 2.5.0${NC}"
+ echo -e "${RED} ${RED}Dragon${PURPLE}Lady Flexi-compile edit $SCRIPTVER${NC}"
  echo -e "${BLUE}================================================================================================================================${NC}"
  echo -e "${PURPLE}You now have a working CLI wallet for ${BLUE}Aegeus${WHITE}!!!"
  echo -e "${BLUE}================================================================================================================================${NC}"
@@ -527,7 +517,6 @@ function bootstrap() {
  echo -e "${BLUE}================================================================================================================================${NC}"
  echo -e "${RED}Bootstrapping Blockchain with IPFS hash ${WHITE}$COIN_BOOTSTRAP_HASH"
  echo -e "${BLUE}================================================================================================================================${NC}"
-  systemctl stop Aegeus.service
   cd $CONFIGFOLDER
   rm -rf blocks chainstate sporks banlist.dat peers.dat 2>/dev/null
   echo -e "${CYAN}Downloading Bootstrap...${NC}"
@@ -535,21 +524,26 @@ function bootstrap() {
   tar -zxvf bootstrap.tar.gz >/dev/null 2>&1
   rm bootstrap.tar.gz
   cd ~
-  systemctl start Aegeus.service
 }
 
 function support() {
+memfree=$(free -m |sed -n '2,2p' |awk '{ print $4 }')
+swapspace=$(free -m |tail -n1 |awk '{ print $2 }')
 getinfo=$(/usr/local/bin/aegeus-cli getinfo)
 coldlook=$(cat ~/.aegeus/debug.log |grep cold)
 last20=$(tail ~/.aegeus/debug.log -n20)
 mnstatus=$(/usr/local/bin/aegeus-cli masternode status)
+corecount=$(($(grep ^proc /proc/cpuinfo |tail -n1 |awk -F: '{print $2}')+1))
+synchedstatus=$(($COIN_CLI_COMMAND |grep 'IsBlockchainSynced' |awk '{ print $2 }'))
 
  echo -e "${BLUE}================================================================================================================================${NC}"
  echo -e "${FgLtBlue}Aegeus ${Blink}${FgLtWhite}Support${Off}${FgLtWhite}${BgLtBlue} ${FgLtRed}Help ${Off}${FgLtWhite}${BgLtBlue}Screen"
  echo -e "${BLUE}================================================================================================================================${NC}"
 echo -e  "                                                                                                          "
-echo -e  " Getinfo: $getinfo                                                                                                        "
+echo -e  " Getinfo: $getinfo            Sync status: $synchedstatus                                                                                            "
 echo -e  "                                                                                                          "
+echo -e  " Cores: $corecount  		Free Memory: $memfree  		Swap Space: $swapspace  "
+echo -e  " "
 echo -e  " Coldlook:  $coldlook                                                                                               "
 echo -e  "                                                                                                          "
 echo -e  " Last20debug: $last20                                             "
@@ -592,7 +586,7 @@ echo -e "                     /${FgLtBlue}${Bold}██${Off}  \ ${FgLtBlue}${Bo
 echo -e "                    |  ${FgLtBlue}${Bold}██████${Off}/                              "
 echo -e "                     \______/                               "
 
-echo -e "${RED} ${RED}Dragon${FgLtMagenta}Lady${FgLtGreen} Flexi-compile edit 2.5.0${NC}"
+echo -e "${RED} ${RED}Dragon${FgLtMagenta}Lady${FgLtGreen} Flexi-compile edit $SCRIPTVER${NC}"
  echo -e "${BLUE}================================================================${NC}"
  echo -e "${WHITE}Main Menu"
  echo -e "${BLUE}===================${WHITE}Here are your options${BLUE}========================${NC}"
@@ -647,15 +641,22 @@ read -rp "Please select your choice: " opt
 done
 }
 
+function syncwaitreboot() {
+
+ISSYNCHED=$(($COIN_CLI_COMMAND |grep 'IsBlockchainSynced' |awk '{ print $2 }'))
+
+}
 
 function doamasternode() {
 
 clear
 preflightchecks
 download_node
+configure_systemd
 bootstrap
 setup_node
-
+startsystemd
+syncwaitreboot
 }
 
 function preflightchecks() {
@@ -672,7 +673,6 @@ function setup_node() {
   update_config
   enable_firewall
   important_information
-  configure_systemd
 read -rp "Press any key to continue" pause
 }
 
@@ -694,5 +694,6 @@ mainmenu2
 
 
 # bash <(curl https://raw.githubusercontent.com/AegeusCoin/AegeusInstaller/master/aegeus_installer)
+
 
 
