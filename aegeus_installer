@@ -347,8 +347,6 @@ masternode=0
 staking=1
 externalip=$EXTERNALIP
 
-#ADDNODES
-
 EOF
 
 if [ -d $(eval echo $COIN_BACKUP) ]; then 
@@ -643,7 +641,7 @@ done
 
 function syncwaitreboot() {
 
-ISSYNCHED=$(($COIN_CLI_COMMAND |grep 'IsBlockchainSynced' |awk '{ print $2 }'))
+ISSYNCHED=$($COIN_CLI_COMMAND |grep 'IsBlockchainSynced' |awk ' { print $2 } ')
 
 }
 
